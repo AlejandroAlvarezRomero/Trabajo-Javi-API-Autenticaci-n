@@ -59,10 +59,14 @@ class BGGSearchItem:
 def _request(path: str, params: dict) -> ET.Element:
     """GET a BGG con reintentos ante el 202 (solicitud en cola)."""
     url = f"{settings.BGG_API_BASE}{path}"
+    headers = {"User-Agent": _USER_AGENT}
+    if settings.BGG_API_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.BGG_API_TOKEN}"
+
     for attempt in range(_MAX_ATTEMPTS):
         try:
             with httpx.Client(
-                timeout=15.0, headers={"User-Agent": _USER_AGENT}
+                timeout=15.0, headers=headers
             ) as client:
                 response = client.get(url, params=params)
         except httpx.HTTPError as exc:
@@ -75,6 +79,8 @@ def _request(path: str, params: dict) -> ET.Element:
             raise BGGUnavailableError("BoardGameGeek no respondió (solicitud en cola)")
         if response.status_code == 404:
             raise BGGNotFoundError("Recurso no encontrado en BoardGameGeek")
+        if response.status_code in (401, 403):
+            raise BGGUnavailableError("BoardGameGeek requiere autenticación de API")
         if response.status_code >= 500:
             raise BGGUnavailableError(
                 f"BoardGameGeek devolvió error {response.status_code}"
@@ -111,77 +117,115 @@ def _clean_description(raw: str | None) -> str | None:
 
 
 def fetch_game(bgg_id: int) -> BGGGameMetadata:
-    """Metadatos de un juego (portada, jugadores, duración, año, rank...)."""
-    root = _request("/thing", {"id": bgg_id, "stats": 1})
-    item = root.find("item")
-    if item is None:
-        raise BGGNotFoundError(f"No existe el juego con id {bgg_id}")
+    """Metadatos de un juego (portada, jugadores, duración, año, rank...) con fallback a catálogo popular."""
+    try:
+        root = _request("/thing", {"id": bgg_id, "stats": 1})
+        item = root.find("item")
+        if item is not None:
+            name_el = item.find("name[@type='primary']")
+            if name_el is None:
+                name_el = item.find("name")
+            name = (
+                name_el.get("value")
+                if name_el is not None
+                else f"Juego BGG #{bgg_id}"
+            )
 
-    name_el = item.find("name[@type='primary']")
-    if name_el is None:
-        name_el = item.find("name")
-    name = (
-        name_el.get("value")
-        if name_el is not None
-        else f"Juego BGG #{bgg_id}"
-    )
+            min_el = item.find("minplayers")
+            max_el = item.find("maxplayers")
+            playtime_el = item.find("playingtime")
+            year_el = item.find("yearpublished")
 
-    min_el = item.find("minplayers")
-    max_el = item.find("maxplayers")
-    playtime_el = item.find("playingtime")
-    year_el = item.find("yearpublished")
+            ranking: int | None = None
+            rating: float | None = None
+            stats = item.find("statistics")
+            if stats is not None:
+                rank_el = stats.find(".//rank[@type='boardgame']")
+                if rank_el is not None:
+                    ranking = _to_int(rank_el.get("value"))
+                average_el = stats.find("ratings/bayesaverage")
+                if average_el is None:
+                    average_el = stats.find("bayesaverage")
+                if average_el is not None:
+                    rating = _to_float(average_el.get("value"))
 
-    ranking: int | None = None
-    rating: float | None = None
-    stats = item.find("statistics")
-    if stats is not None:
-        rank_el = stats.find(".//rank[@type='boardgame']")
-        if rank_el is not None:
-            ranking = _to_int(rank_el.get("value"))
-        average_el = stats.find("ratings/bayesaverage")
-        if average_el is None:
-            average_el = stats.find("bayesaverage")
-        if average_el is not None:
-            rating = _to_float(average_el.get("value"))
+            return BGGGameMetadata(
+                bgg_id=bgg_id,
+                name=name,
+                description=_clean_description(item.findtext("description")),
+                image_url=item.findtext("image") or None,
+                thumbnail_url=item.findtext("thumbnail") or None,
+                min_players=_to_int(min_el.get("value")) if min_el is not None else None,
+                max_players=_to_int(max_el.get("value")) if max_el is not None else None,
+                avg_playtime_minutes=_to_int(playtime_el.get("value")) if playtime_el is not None else None,
+                year_published=_to_int(year_el.get("value")) if year_el is not None else None,
+                bgg_ranking=ranking,
+                bgg_rating=rating,
+            )
+    except BGGError:
+        pass
 
-    # Nota: nunca usar `or` sobre un Element de XML (es falsy si no tiene hijos)
-    return BGGGameMetadata(
-        bgg_id=bgg_id,
-        name=name,
-        description=_clean_description(item.findtext("description")),
-        image_url=item.findtext("image") or None,
-        thumbnail_url=item.findtext("thumbnail") or None,
-        min_players=_to_int(min_el.get("value")) if min_el is not None else None,
-        max_players=_to_int(max_el.get("value")) if max_el is not None else None,
-        avg_playtime_minutes=_to_int(playtime_el.get("value")) if playtime_el is not None else None,
-        year_published=_to_int(year_el.get("value")) if year_el is not None else None,
-        bgg_ranking=ranking,
-        bgg_rating=rating,
-    )
+    # Fallback a catálogo precargado
+    from app.db.seed import POPULAR_GAMES
+    for g in POPULAR_GAMES:
+        if g["bgg_id"] == bgg_id:
+            return BGGGameMetadata(
+                bgg_id=bgg_id,
+                name=str(g["name"]),
+                description=str(g.get("description") or ""),
+                image_url=str(g.get("image_url") or "") or None,
+                thumbnail_url=str(g.get("thumbnail_url") or "") or None,
+                min_players=int(g["min_players"]) if g.get("min_players") else None,
+                max_players=int(g["max_players"]) if g.get("max_players") else None,
+                avg_playtime_minutes=int(g["avg_playtime_minutes"]) if g.get("avg_playtime_minutes") else None,
+                year_published=int(g["year_published"]) if g.get("year_published") else None,
+                bgg_ranking=int(g["bgg_ranking"]) if g.get("bgg_ranking") else None,
+                bgg_rating=float(g["bgg_rating"]) if g.get("bgg_rating") else None,
+            )
+    raise BGGNotFoundError(f"No existe el juego con id {bgg_id}")
 
 
 def search_games(query: str, limit: int = 10) -> list[BGGSearchItem]:
-    """Búsqueda de juegos de mesa por texto en BGG."""
-    root = _request("/search", {"query": query, "type": "boardgame"})
-    results: list[BGGSearchItem] = []
-    for item in root.findall("item"):
-        if item.get("type") != "boardgame":
-            continue
-        names = item.findall("name")
-        primary = next((n for n in names if n.get("primary") == "true"), None)
-        name_el = primary if primary is not None else (names[0] if names else None)
-        if name_el is None:
-            continue
-        results.append(
-            BGGSearchItem(
-                bgg_id=int(item.get("id", "0")),
-                name=name_el.get("value", ""),
-                year_published=_to_int(
-                    (item.find("yearpublished").get("value")
-                     if item.find("yearpublished") is not None else None)
-                ),
+    """Búsqueda de juegos de mesa por texto en BGG con fallback a catálogo popular."""
+    try:
+        root = _request("/search", {"query": query, "type": "boardgame"})
+        results: list[BGGSearchItem] = []
+        for item in root.findall("item"):
+            if item.get("type") != "boardgame":
+                continue
+            names = item.findall("name")
+            primary = next((n for n in names if n.get("primary") == "true"), None)
+            name_el = primary if primary is not None else (names[0] if names else None)
+            if name_el is None:
+                continue
+            results.append(
+                BGGSearchItem(
+                    bgg_id=int(item.get("id", "0")),
+                    name=name_el.get("value", ""),
+                    year_published=_to_int(
+                        (item.find("yearpublished").get("value")
+                         if item.find("yearpublished") is not None else None)
+                    ),
+                )
             )
+            if len(results) >= limit:
+                break
+        if results:
+            return results
+    except BGGError:
+        pass
+
+    # Fallback a catálogo precargado de juegos populares
+    q = query.strip().lower()
+    from app.db.seed import POPULAR_GAMES
+    matches = [
+        BGGSearchItem(
+            bgg_id=int(g["bgg_id"]),
+            name=str(g["name"]),
+            year_published=int(g["year_published"]) if g.get("year_published") else None,
         )
-        if len(results) >= limit:
-            break
-    return results
+        for g in POPULAR_GAMES
+        if q in str(g["name"]).lower()
+    ]
+    return matches[:limit]
+

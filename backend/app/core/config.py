@@ -31,6 +31,9 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     CORS_ORIGINS: list[str] = [
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://localhost:80",
         "http://localhost:5173",
         "http://localhost:3000",
         "http://localhost:8080",
@@ -38,6 +41,7 @@ class Settings(BaseSettings):
 
     # --- BoardGameGeek ---
     BGG_API_BASE: str = "https://boardgamegeek.com/xmlapi2"
+    BGG_API_TOKEN: str | None = None
 
 
 settings = Settings()

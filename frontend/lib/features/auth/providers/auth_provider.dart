@@ -62,6 +62,27 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  String _formatError(DioException e, String fallback) {
+    if (e.response == null) {
+      return 'No se pudo conectar con el servidor (http://localhost:8000). Comprueba que uvicorn esté corriendo.';
+    }
+    final data = e.response?.data;
+    if (data is Map && data['detail'] != null) {
+      final detail = data['detail'];
+      if (detail is String) return detail;
+      if (detail is List && detail.isNotEmpty) {
+        final first = detail.first;
+        if (first is Map && first['msg'] != null) {
+          final field = first['loc'] is List && (first['loc'] as List).isNotEmpty
+              ? (first['loc'] as List).last
+              : '';
+          return '${field.isNotEmpty ? "$field: " : ""}${first['msg']}';
+        }
+      }
+    }
+    return fallback;
+  }
+
   Future<bool> login(String email, String password) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
@@ -70,8 +91,7 @@ class AuthNotifier extends Notifier<AuthState> {
       state = AuthState(status: AuthStatus.authenticated, user: user);
       return true;
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] ?? 'Credenciales incorrectas o error en el servidor';
-      state = AuthState(status: AuthStatus.unauthenticated, errorMessage: msg.toString());
+      state = AuthState(status: AuthStatus.unauthenticated, errorMessage: _formatError(e, 'Credenciales incorrectas'));
       return false;
     } catch (e) {
       state = AuthState(status: AuthStatus.unauthenticated, errorMessage: 'Error al iniciar sesión: $e');
@@ -86,8 +106,7 @@ class AuthNotifier extends Notifier<AuthState> {
       // Auto login tras registro exitoso
       return await login(email, password);
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] ?? 'Error al registrarse';
-      state = AuthState(status: AuthStatus.unauthenticated, errorMessage: msg.toString());
+      state = AuthState(status: AuthStatus.unauthenticated, errorMessage: _formatError(e, 'Error al registrarse'));
       return false;
     } catch (e) {
       state = AuthState(status: AuthStatus.unauthenticated, errorMessage: 'Error de red: $e');

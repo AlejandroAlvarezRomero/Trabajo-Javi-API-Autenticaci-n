@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
@@ -34,10 +35,17 @@ class _BggSearchDialogState extends ConsumerState<BggSearchDialog> {
       setState(() {
         _results = results;
         _searching = false;
+        if (results.isEmpty) {
+          _errorMessage = 'No se encontraron juegos con "$query".';
+        }
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error buscando en BGG: $e';
+        if (e is DioException && e.response?.data is Map && e.response?.data['detail'] != null) {
+          _errorMessage = e.response!.data['detail'].toString();
+        } else {
+          _errorMessage = 'No se pudo contactar con el buscador. Inténtalo de nuevo.';
+        }
         _searching = false;
       });
     }
@@ -56,9 +64,13 @@ class _BggSearchDialogState extends ConsumerState<BggSearchDialog> {
       }
     } catch (e) {
       setState(() => _adding = false);
+      String msg = 'Error añadiendo juego';
+      if (e is DioException && e.response?.data is Map && e.response?.data['detail'] != null) {
+        msg = e.response!.data['detail'].toString();
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error añadiendo juego: $e')),
+          SnackBar(content: Text(msg)),
         );
       }
     }
