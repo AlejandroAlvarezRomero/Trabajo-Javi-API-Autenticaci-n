@@ -177,18 +177,43 @@ backend/
   - Workflow de integración continua en GitHub Actions: `.github/workflows/ci.yml`.
   - Mantenimiento y ampliación de tests independientes: `smoke_auth.py` ampliado a **28/28 OK**, `integration_test.py` ampliado a **56/56 OK**, `migrations_test.py` en **6/6 OK**.
 
+### Tarea D ✅ (HECHA el 2026-10-19): Integración Frontend, Avatares Globales, Docker y Git
+- **Sistema de Avatares y Fotos de Perfil**:
+  - Backend: endpoint `POST /api/v1/auth/avatar` para subir fotos (.jpg/.png/.webp/.gif <= 5MB), guardadas en `backend/uploads/avatars/`. Directorio `/uploads/` montado como estático en FastAPI.
+  - Esquemas y visibilidad global: `avatar_url` propagado a `MemberOut`, `GroupStatsOut`, `ParticipantOut` y `ConfirmationOut`. Todos los usuarios ven la foto de los demás en la lista de miembros, leaderboard de temporada y confirmaciones de partidas.
+  - Frontend: componente reutilizable `UserAvatar` con carga remota de red, resolución automática de URLs estáticas (`resolveUrl`), fallback con iniciales deterministas y paleta de colores coherente.
+  - Editor interactivo en `ProfileScreen`: selección de avatares temáticos predefinidos (guerrero, mago, rey, pícaro, bardo, bot), campo de URL personalizada y previsualización en vivo.
+- **Conexión de Nuevas Funciones en Frontend**:
+  - Transferencia de propiedad de grupo conectada en el menú contextual de miembros de `GroupDetailScreen` (`transferOwnership`).
+  - Precarga de juegos populares conectada con botón de acción directa en la pestaña de catálogo (`seedPopularGames`).
+  - Flujo interactivo de recuperación de contraseña ("¿Olvidaste tu contraseña?") implementado en `LoginScreen` con soporte para validación y reseteo por token.
+- **Dockerización Completa**:
+  - `backend/Dockerfile`: contenedor Python 3.12-slim con soporte para SQLite/PostgreSQL y volumen persistente de uploads.
+  - `frontend/Dockerfile` + `frontend/nginx.conf`: contenedor multi-etapa con Flutter SDK y Nginx sirviendo la SPA con proxy reverso a `/api/`, `/uploads/` y `/docs`.
+  - `docker-compose.yml`: orquestación de PostgreSQL 16, backend FastAPI y frontend web Nginx con healthchecks y volúmenes de datos.
+- **Git y Preparación Móvil**:
+  - Repositorio Git inicializado en la raíz con `.gitignore` exhaustivo (omitiendo `.venv`, `.dart_tool`, `build`, `.db`).
+  - Primer commit limpio realizado.
+  - `AndroidManifest.xml` actualizado con permisos `INTERNET`, `ACCESS_NETWORK_STATE`, `usesCleartextTraffic="true"` y label "Board Game Tracker".
+- **Estado de Pruebas**:
+  - `smoke_auth.py`: **28/28 OK**.
+  - `integration_test.py`: **56/56 OK**.
+  - `migrations_test.py`: **6/6 OK**.
+  - `pytest`: **8/8 PASSED** (incluyendo `test_avatar_upload`).
+  - `flutter build web`: compilado exitosamente en `frontend/build/web`.
+
 ## 8. Restricciones
 
 - **No romper lo verificado**: al terminar, `tests/smoke_auth.py` = 28/28,
   `tests/integration_test.py` = 56/56, `tests/migrations_test.py` = 6/6 y
-  `pytest` = 7/7 deben seguir en verde (o ampliar los tests si añades funcionalidad nueva).
+  `pytest` = 8/8 deben seguir en verde (o ampliar los tests si añades funcionalidad nueva).
 - No cambiar el esquema de tokens/cookies sin actualizar `deps.py`, `security.py`
   y los tests a la vez.
 - Mantener el Swagger limpio: `summary`/`description` en los endpoints.
 - Si creas tablas nuevas, acuérdate de las relationships con `back_populates`
   y de los `flush()` con `autoflush=False`.
 
-*(Documento actualizado el 2026-10-19: Tareas A (Alembic), B (Frontend Flutter Web) y C (Mejoras Backend, Seguridad, SSE, Rate Limiting, Precarga de Juegos y Pytest CI)
-completadas al 100 % — Backend 28/28, 56/56, 6/6 y pytest 7/7 en verde; Frontend Flutter compilado exitosamente.
+*(Documento actualizado el 2026-10-19: Tareas A (Alembic), B (Frontend Flutter Web), C (Mejoras Backend Avanzadas) y D (Conexión de Funciones, Fotos de Perfil Globales, Docker, Git y Móvil)
+completadas al 100 % — Backend 28/28, 56/56, 6/6 y pytest 8/8 en verde; Frontend Flutter compilado exitosamente en Web; Docker Compose configurado; Git inicializado.
 `backend/README.md` documenta la API completa en formato tabla; este AGENTS.md manda sobre el README.)*
 
