@@ -1,0 +1,12 @@
+# Entorno
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# BD local
+*.db
+
+# IDE
+.vscode/
+.idea/

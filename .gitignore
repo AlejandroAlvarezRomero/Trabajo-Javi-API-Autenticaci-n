@@ -1,0 +1,31 @@
+# Python & Backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/.env
+backend/*.db
+backend/*.db-journal
+backend/uploads/avatars/*
+!backend/uploads/avatars/.gitkeep
+backend/.pytest_cache/
+
+# Flutter & Frontend
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/
+frontend/android/app/debug/
+frontend/android/app/profile/
+frontend/android/app/release/
+frontend/ios/Flutter/.last_build_id
+frontend/**/*.iml
+
+# System & IDE
+.idea/
+.vscode/
+*.swp
+*.DS_Store
+Thumbs.db
